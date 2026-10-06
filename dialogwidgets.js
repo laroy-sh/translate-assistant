@@ -1,11 +1,11 @@
-const {GObject, Gtk} = imports.gi;
+import GObject from 'gi://GObject';
+import Gtk from 'gi://Gtk';
 
-const ExtensionUtils = imports.misc.extensionUtils;
-const Extension = ExtensionUtils.getCurrentExtension();
-const Gettext = imports.gettext.domain(Extension.uuid);
-const _ = Gettext.gettext;
+import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-var KeyValueDialog = GObject.registerClass(
+const Extension = ExtensionPreferences.lookupByURL(import.meta.url);
+
+export const KeyValueDialog = GObject.registerClass(
     {
         GTypeName: (Extension.uuid + '.KeyValueDialog').replace(/[\W_]+/g,'_')
     },

@@ -22,29 +22,20 @@
  * IN THE SOFTWARE.
  */
 
-const {GLib, GObject, Gio, Gtk, Gdk} = imports.gi;
+import GObject from 'gi://GObject';
 
-const ExtensionUtils = imports.misc.extensionUtils;
-const Extension = ExtensionUtils.getCurrentExtension();
-const Widgets = Extension.imports.preferenceswidget;
-const AboutPage = Extension.imports.aboutpage.AboutPage;
-const Gettext = imports.gettext.domain(Extension.uuid);
-const _ = Gettext.gettext;
+import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-const DialogWidgets = Extension.imports.dialogwidgets;
+import * as Widgets from './preferenceswidget.js';
+import {AboutPage} from './aboutpage.js';
 
-function init() {
-    ExtensionUtils.initTranslations();
-}
-
-var TranslateAssistantPreferencesWidget = GObject.registerClass(
+const TranslateAssistantPreferencesWidget = GObject.registerClass(
     class TranslateAssistantPreferencesWidget extends Widgets.ListWithStack{
-        _init(){
+        _init(settings){
             super._init({});
 
             let preferencesPage = new Widgets.Page();
 
-            var settings = ExtensionUtils.getSettings();
 
             let indicatorSection = preferencesPage.addFrame(
                 _("Indicator options"));
@@ -91,13 +82,15 @@ var TranslateAssistantPreferencesWidget = GObject.registerClass(
     }
 );
 
-function buildPrefsWidget() {
-    let preferencesWidget = new TranslateAssistantPreferencesWidget();
-    preferencesWidget.connect("realize", ()=>{
-        const window = preferencesWidget.get_root();
-        window.set_title(_("Translate Assistant Configuration"));
-        window.default_height = 800;
-        window.default_width = 850;
-    });
-    return preferencesWidget;
+export default class TranslateAssistantPreferences extends ExtensionPreferences {
+    getPreferencesWidget() {
+        const preferencesWidget = new TranslateAssistantPreferencesWidget(this.getSettings());
+        preferencesWidget.connect("realize", ()=>{
+            const window = preferencesWidget.get_root();
+            window.set_title(_("Translate Assistant Configuration"));
+            window.default_height = 800;
+            window.default_width = 850;
+        });
+        return preferencesWidget;
+    }
 }

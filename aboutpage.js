@@ -20,13 +20,19 @@
  * IN THE SOFTWARE.
  */
 
-const {Gtk, GLib, GObject, GdkPixbuf, Gio} = imports.gi;
-const Extension = imports.misc.extensionUtils.getCurrentExtension();
-const Widgets = Extension.imports.preferenceswidget;
-const Gettext = imports.gettext.domain(Extension.metadata['gettext-domain']);
-const _ = Gettext.gettext;
+import Gtk from 'gi://Gtk';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import GdkPixbuf from 'gi://GdkPixbuf';
+import Gio from 'gi://Gio';
+import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import * as Config from 'resource:///org/gnome/Shell/Extensions/js/misc/config.js';
 
-var AboutPage = GObject.registerClass(
+import * as Widgets from './preferenceswidget.js';
+
+const Extension = ExtensionPreferences.lookupByURL(import.meta.url);
+
+export const AboutPage = GObject.registerClass(
     {
         GTypeName: (Extension.uuid + '.AboutPage').replace(/[\W_]+/g,'_')
     },
@@ -51,7 +57,7 @@ var AboutPage = GObject.registerClass(
             info.addLabelRow(Extension.metadata.name + " " + _('Version'),
                              Extension.metadata.version.toString());
             info.addLabelRow(_("GNOME Version"),
-                             imports.misc.config.PACKAGE_VERSION.toString());
+                             Config.PACKAGE_VERSION.toString());
             // Translators: This string precedes the OS (Distro + version)
             info.addLabelRow(_("OS"), this._getOS());
             // Translators: This string precedes the Session type (either "Wayland" or "X11")

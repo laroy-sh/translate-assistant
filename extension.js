@@ -22,42 +22,45 @@
  * IN THE SOFTWARE.
  */
 
-const {Gio, Clutter, St, GObject, GLib, Pango, PangoCairo, Meta, Shell, Soup} = imports.gi;
-const Cairo = imports.cairo;
+import Gio from 'gi://Gio';
+import Clutter from 'gi://Clutter';
+import St from 'gi://St';
+import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
+import Pango from 'gi://Pango';
+import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
+import Soup from 'gi://Soup?version=3.0';
 
-const MessageTray = imports.ui.messageTray;
-const Main = imports.ui.main;
-const PanelMenu = imports.ui.panelMenu;
-const PopupMenu = imports.ui.popupMenu;
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-const ExtensionUtils = imports.misc.extensionUtils;
-const Extension = ExtensionUtils.getCurrentExtension();
+import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const Gettext = imports.gettext.domain(Extension.uuid);
-const _ = Gettext.gettext;
-
-const Clipboard = St.Clipboard.get_default();
 const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
 const SHELL_KEYBINDINGS_SCHEMA = "org.gnome.shell.keybindings";
 const SHORTCUT_SETTING_KEY = "keybinding-translate-clipboard";
 
 
-var TranslateAssistant = GObject.registerClass(
+const TranslateAssistant = GObject.registerClass(
     class TranslateAssistant extends PanelMenu.Button{
-        _init(){
-            super._init(St.Align.START);
+        _init(extension){
+            super._init(0.0);
+
+            this._extension = extension;
 
             this._settingsChangedId = null;
             this._clipboardTimeoutId = null;
             this._selectionOwnerChangedId = null;
 
-            this._settings = ExtensionUtils.getSettings();
+            this._settings = extension.getSettings();
 
             /* Icon indicator */
             let box = new St.BoxLayout();
             this.icon = new St.Icon({style_class: 'system-status-icon'});
-            box.add(this.icon);
+            box.add_child(this.icon);
             this.add_child(box);
 
             this.autoPasteSwitch = new PopupMenu.PopupSwitchMenuItem(
@@ -82,7 +85,7 @@ var TranslateAssistant = GObject.registerClass(
             /* Setings */
             this.settingsMenuItem = new PopupMenu.PopupMenuItem(_("Settings"));
             this.settingsMenuItem.connect('activate', () => {
-                ExtensionUtils.openPrefs();
+                this._extension.openPreferences();
             });
             this.menu.addMenuItem(this.settingsMenuItem);
             /* Init */
@@ -96,14 +99,8 @@ var TranslateAssistant = GObject.registerClass(
         }
 
         _setupListener(){
-            const metaDisplay = Shell.Global.get().get_display();
-            if (typeof metaDisplay.get_selection === 'function') {
-                const selection = metaDisplay.get_selection();
-                this._setupSelectionTracking(selection);
-            }
-            else {
-                this._setupTimeout();
-            }
+            const selection = global.display.get_selection();
+            this._setupSelectionTracking(selection);
         }
 
         _setupSelectionTracking (selection) {
@@ -115,7 +112,7 @@ var TranslateAssistant = GObject.registerClass(
 
         _translateIfAutoPaste(){
             if(this.autoPasteSwitch.state === true){ 
-                Clipboard.get_text(CLIPBOARD_TYPE,(_, fromText) => {
+                St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, fromText) => {
                     if(fromText && fromText !== ""){
                         this.inputEntry.get_clutter_text().set_text(fromText);
                         if(this.autoTranslateSwitch.state === true){
@@ -137,36 +134,12 @@ var TranslateAssistant = GObject.registerClass(
             }
         }
 
-        _setupTimeout (reiterate) {
-            let that = this;
-            reiterate = typeof reiterate === 'boolean' ? reiterate : true;
-
-            this._clipboardTimeoutId = Mainloop.timeout_add(TIMEOUT_MS, function () {
-                that._translateIfAutoPaste();
-
-                // If the timeout handler returns `false`, the source is
-                // automatically removed, so we reset the timeout-id so it won't
-                // be removed on `.destroy()`
-                if (reiterate === false)
-                    that._clipboardTimeoutId = null;
-
-                // As long as the timeout handler returns `true`, the handler
-                // will be invoked again and again as an interval
-                return reiterate;
-            });
-        }
-        _clearClipboardTimeout () {
-            if (!this._clipboardTimeoutId)
-                return;
-
-            Mainloop.source_remove(this._clipboardTimeoutId);
-            this._clipboardTimeoutId = null;
-        }
         _disconnectSelectionListener () {
             if (!this._selectionOwnerChangedId)
                 return;
 
             this.selection.disconnect(this._selectionOwnerChangedId);
+            this._selectionOwnerChangedId = null;
         }
         _disconnectSettings () {
             if (!this._settingsChangedId)
@@ -185,8 +158,7 @@ var TranslateAssistant = GObject.registerClass(
             this._url = this._getValue('url');
             this._apikey = this._getValue('apikey');
             this._keybinding_translate_clipboard = this._getValue(SHORTCUT_SETTING_KEY);
-            log(this._keybinding_translate_clipboard);
-            this._notifications = this._getValue('notifications');
+                        this._notifications = this._getValue('notifications');
             this._darktheme = this._getValue('darktheme');
 
             this._set_icon_indicator();
@@ -201,7 +173,7 @@ var TranslateAssistant = GObject.registerClass(
                 Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
                 Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
                 () => {
-                    Clipboard.get_text(CLIPBOARD_TYPE,(_, fromText) => {
+                    St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, fromText) => {
                         this.inputEntry.get_clutter_text().set_text(fromText);
                         this._translateText(true, fromText, (toText) => {
                             this.outputEntry.get_clutter_text().set_text(toText);
@@ -319,7 +291,7 @@ var TranslateAssistant = GObject.registerClass(
                 styleClass: "translate-assistant-button"
             });
             buttonPasteFromClipboardOut.connect('clicked', ()=>{
-                Clipboard.get_text(CLIPBOARD_TYPE,(_, inText) => {
+                St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, inText) => {
                     if(inText && inText !== ""){
                         this._copyToClipboard(inText);
                     }
@@ -364,7 +336,7 @@ var TranslateAssistant = GObject.registerClass(
                 styleClass: "translate-assistant-button"
             });
             buttonPasteFromClipboardIn.connect('clicked', ()=>{
-                Clipboard.get_text(CLIPBOARD_TYPE,(_, inText) => {
+                St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, inText) => {
                     if(inText && inText !== ""){
                         this.inputEntry.get_clutter_text().set_text(inText);
                     }
@@ -448,10 +420,10 @@ var TranslateAssistant = GObject.registerClass(
         _copyToClipboard(inText){
             if(this.autoPasteSwitch.state === true){
                 this.autoPasteSwitch.setToggleState(false);
-                Clipboard.set_text(CLIPBOARD_TYPE, inText);
+                St.Clipboard.get_default().set_text(CLIPBOARD_TYPE, inText);
                 this.autoPasteSwitch.setToggleState(true);
             }else{
-                Clipboard.set_text(CLIPBOARD_TYPE, inText);
+                St.Clipboard.get_default().set_text(CLIPBOARD_TYPE, inText);
             }
         }
 
@@ -474,10 +446,10 @@ var TranslateAssistant = GObject.registerClass(
                 width: 300,
                 height: 300
             });
-            scroll.add_actor(box);
+            scroll.set_child(box);
             this.menuInputExpander = new PopupMenu.PopupSubMenuMenuItem(this._source_lang);
-            this.menuInputExpander.menu.box.add(scroll);
-            this.menuInputExpander.menu.box.add(this._menuIconsIn())
+            this.menuInputExpander.menu.box.add_child(scroll);
+            this.menuInputExpander.menu.box.add_child(this._menuIconsIn())
             return this.menuInputExpander;
         }
 
@@ -500,10 +472,10 @@ var TranslateAssistant = GObject.registerClass(
                 width: 300,
                 height: 300
             });
-            scroll.add_actor(box);
+            scroll.set_child(box);
             this.menuOutputExpander = new PopupMenu.PopupSubMenuMenuItem(this._target_lang);
-            this.menuOutputExpander.menu.box.add(scroll);
-            this.menuOutputExpander.menu.box.add(this._menuIconsOut())
+            this.menuOutputExpander.menu.box.add_child(scroll);
+            this.menuOutputExpander.menu.box.add_child(this._menuIconsOut())
             return this.menuOutputExpander;
         }
 
@@ -520,7 +492,7 @@ var TranslateAssistant = GObject.registerClass(
         }
 
         _get_icon(iconName){
-            const basePath = Extension.dir.get_child("icons").get_path();
+            const basePath = `${this._extension.path}/icons`;
             let fileIcon = Gio.File.new_for_path(
                 `${basePath}/${iconName}.svg`);
             if(fileIcon.query_exists(null) == false){
@@ -542,25 +514,20 @@ var TranslateAssistant = GObject.registerClass(
         destroy(){
             this._disconnectSettings();
             this._unbindShortcut();
-            this._clearClipboardTimeout();
             this._disconnectSelectionListener();
             super.destroy();
         }
     }
 );
 
-let translateAssistant;
+export default class TranslateAssistantExtension extends Extension {
+    enable() {
+        this._translateAssistant = new TranslateAssistant(this);
+        Main.panel.addToStatusArea(this.uuid, this._translateAssistant, 0, 'right');
+    }
 
-function init(){
-    ExtensionUtils.initTranslations();
-}
-
-function enable(){
-    translateAssistant = new TranslateAssistant();
-    Main.panel.addToStatusArea('translateAssistant', translateAssistant, 0, 'right');
-}
-
-function disable() {
-    translateAssistant.destroy();
-    translateAssistant = null;
+    disable() {
+        this._translateAssistant?.destroy();
+        this._translateAssistant = null;
+    }
 }
