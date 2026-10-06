@@ -659,7 +659,7 @@ export const StringSetting = GObject.registerClass(
     }
 );
 
-/** An entry that keeps the DeepL API key in the keyring */
+/** A masked entry that keeps the DeepL API key in the keyring */
 export const ApiKeySetting = GObject.registerClass(
     {
         GTypeName: (Extension.uuid + '.ApiKeySetting').replace(/[\W_]+/g, '_')
@@ -673,7 +673,8 @@ export const ApiKeySetting = GObject.registerClass(
                 valign: Gtk.Align.CENTER,
                 visible: true
             });
-            this._entry = new Gtk.Entry({
+            this._entry = new Gtk.PasswordEntry({
+                show_peek_icon: true,
                 width_chars: 16,
                 sensitive: false
             });
