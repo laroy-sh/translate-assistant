@@ -44,6 +44,8 @@ const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
 const SHELL_KEYBINDINGS_SCHEMA = "org.gnome.shell.keybindings";
 const SHORTCUT_SETTING_KEY = "keybinding-translate-clipboard";
+// Source language code meaning "let DeepL detect it".
+const AUTO_LANG = "AUTO";
 
 
 const TranslateAssistant = GObject.registerClass(
@@ -216,14 +218,28 @@ const TranslateAssistant = GObject.registerClass(
             if(apikey){
                 let split_sentences = this._split_sentences?"1":"0";
                 let preserve_formatting = this._preserve_formatting?"1":"0";
+                let sourceLang = fromOrTo === true?this._source_lang:this._target_lang;
+                let targetLang = fromOrTo === true?this._target_lang:this._source_lang;
+                if(targetLang === AUTO_LANG){
+                    targetLang = this._detected_lang;
+                    if(!targetLang){
+                        Main.notify("Translate Assistant",
+                            _("Translate once so the source language can be detected"));
+                        return;
+                    }
+                }
                 let params = {
                     text: fromText,
-                    source_lang: fromOrTo === true?this._source_lang:this._target_lang,
-                    target_lang: fromOrTo === true?this._target_lang:this._source_lang,
+                    target_lang: targetLang,
                     split_sentences: split_sentences,
                     preserve_formatting: preserve_formatting,
                     formality: this._formality,
                 };
+                // Omitting source_lang makes DeepL detect it. Source codes
+                // carry no regional variant (EN-US -> EN).
+                if(sourceLang !== AUTO_LANG){
+                    params.source_lang = sourceLang.split('-')[0];
+                }
                 let message = Soup.Message.new_from_encoded_form(
                     'POST',
                     this._url,
@@ -248,6 +264,10 @@ const TranslateAssistant = GObject.registerClass(
                                     let toText = null;
                                     if (translations.length > 0){
                                         toText = translations[0].text;
+                                        if(fromOrTo === true){
+                                            this._detected_lang =
+                                                translations[0].detected_source_language;
+                                        }
                                     }else{
                                         toText = "";
                                     }
@@ -390,6 +410,14 @@ const TranslateAssistant = GObject.registerClass(
 
             });
             buttonRevert.connect('clicked', ()=>{
+                if(this._source_lang === AUTO_LANG){
+                    if(!this._detected_lang){
+                        Main.notify("Translate Assistant",
+                            _("Translate once so the source language can be detected"));
+                        return;
+                    }
+                    this._source_lang = this._detected_lang;
+                }
                 const oldTargetLang = this._target_lang;
                 this._target_lang = this._source_lang;
                 this._source_lang = oldTargetLang;
