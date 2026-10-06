@@ -195,7 +195,6 @@ const TranslateAssistant = GObject.registerClass(
                 let split_sentences = this._split_sentences?"1":"0";
                 let preserve_formatting = this._preserve_formatting?"1":"0";
                 let params = {
-                    auth_key: this._apikey,
                     text: fromText,
                     source_lang: fromOrTo === true?this._source_lang:this._target_lang,
                     target_lang: fromOrTo === true?this._target_lang:this._source_lang,
@@ -208,6 +207,8 @@ const TranslateAssistant = GObject.registerClass(
                     this._url,
                     Soup.form_encode_hash(params)
                 );
+                message.get_request_headers().append(
+                    'Authorization', `DeepL-Auth-Key ${this._apikey}`);
                 let session = new Soup.Session();
                 session.send_and_read_async(
                     message,
