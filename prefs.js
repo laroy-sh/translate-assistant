@@ -28,10 +28,11 @@ import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Ex
 
 import * as Widgets from './preferenceswidget.js';
 import {AboutPage} from './aboutpage.js';
+import {migrateApiKey} from './secret.js';
 
 const TranslateAssistantPreferencesWidget = GObject.registerClass(
     class TranslateAssistantPreferencesWidget extends Widgets.ListWithStack{
-        _init(settings){
+        _init(settings, migrated){
             super._init({});
 
             let preferencesPage = new Widgets.Page();
@@ -54,7 +55,10 @@ const TranslateAssistantPreferencesWidget = GObject.registerClass(
                 "formality",
                 new Widgets.EnumSetting(settings, "formality"));
             indicatorSection.addGSetting(settings, "url");
-            indicatorSection.addGSetting(settings, "apikey");
+            indicatorSection.addWidgetSetting(
+                settings,
+                "apikey",
+                new Widgets.ApiKeySetting(migrated));
 
 
             const themePage = new Widgets.Page();
@@ -84,7 +88,9 @@ const TranslateAssistantPreferencesWidget = GObject.registerClass(
 
 export default class TranslateAssistantPreferences extends ExtensionPreferences {
     getPreferencesWidget() {
-        const preferencesWidget = new TranslateAssistantPreferencesWidget(this.getSettings());
+        const settings = this.getSettings();
+        const migrated = migrateApiKey(settings);
+        const preferencesWidget = new TranslateAssistantPreferencesWidget(settings, migrated);
         preferencesWidget.connect("realize", ()=>{
             const window = preferencesWidget.get_root();
             window.set_title(_("Translate Assistant Configuration"));

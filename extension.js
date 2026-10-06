@@ -38,6 +38,8 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {lookupApiKey, migrateApiKey} from './secret.js';
+
 const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
 const SHELL_KEYBINDINGS_SCHEMA = "org.gnome.shell.keybindings";
@@ -156,7 +158,6 @@ const TranslateAssistant = GObject.registerClass(
             this._preserve_formatting = this._getValue('preserve-formatting');
             this._formality = this._getValue('formality');
             this._url = this._getValue('url');
-            this._apikey = this._getValue('apikey');
             this._keybinding_translate_clipboard = this._getValue(SHORTCUT_SETTING_KEY);
                         this._notifications = this._getValue('notifications');
             this._darktheme = this._getValue('darktheme');
@@ -191,7 +192,23 @@ const TranslateAssistant = GObject.registerClass(
         }
 
         _translateText(fromOrTo, fromText, callback){
-            if(fromText && fromText !== ""){
+            if(!fromText || fromText === "")
+                return;
+            lookupApiKey().then((apikey) => {
+                if(this._destroyed)
+                    return;
+                if(!apikey){
+                    Main.notify("Translate Assistant", _("Set API Key of DeepL"));
+                    return;
+                }
+                this._sendTranslation(apikey, fromOrTo, fromText, callback);
+            }).catch((e) => {
+                Main.notify("Translate Assistant", `Error: ${e.message}`);
+            });
+        }
+
+        _sendTranslation(apikey, fromOrTo, fromText, callback){
+            if(apikey){
                 let split_sentences = this._split_sentences?"1":"0";
                 let preserve_formatting = this._preserve_formatting?"1":"0";
                 let params = {
@@ -208,7 +225,7 @@ const TranslateAssistant = GObject.registerClass(
                     Soup.form_encode_hash(params)
                 );
                 message.get_request_headers().append(
-                    'Authorization', `DeepL-Auth-Key ${this._apikey}`);
+                    'Authorization', `DeepL-Auth-Key ${apikey}`);
                 let session = new Soup.Session();
                 session.send_and_read_async(
                     message,
@@ -513,6 +530,7 @@ const TranslateAssistant = GObject.registerClass(
         }
 
         destroy(){
+            this._destroyed = true;
             this._disconnectSettings();
             this._unbindShortcut();
             this._disconnectSelectionListener();
@@ -523,6 +541,7 @@ const TranslateAssistant = GObject.registerClass(
 
 export default class TranslateAssistantExtension extends Extension {
     enable() {
+        migrateApiKey(this.getSettings()).catch(logError);
         this._translateAssistant = new TranslateAssistant(this);
         Main.panel.addToStatusArea(this.uuid, this._translateAssistant, 0, 'right');
     }

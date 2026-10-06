@@ -32,6 +32,7 @@ import Gtk from 'gi://Gtk';
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import * as DialogWidgets from './dialogwidgets.js';
+import {lookupApiKey, storeApiKey} from './secret.js';
 
 // The extension object is registered only after prefs.js is imported,
 // so look it up lazily; GType names need the uuid at module load.
@@ -654,6 +655,59 @@ export const StringSetting = GObject.registerClass(
                 }
                 this.get_toplevel().set_focus(null);
             });
+        }
+    }
+);
+
+/** An entry that keeps the DeepL API key in the keyring */
+export const ApiKeySetting = GObject.registerClass(
+    {
+        GTypeName: (Extension.uuid + '.ApiKeySetting').replace(/[\W_]+/g, '_')
+    },
+    class ApiKeySetting extends Gtk.Box{
+
+        // `ready` resolves once any legacy GSettings key has been migrated.
+        _init(ready) {
+            super._init({
+                halign: Gtk.Align.END,
+                valign: Gtk.Align.CENTER,
+                visible: true
+            });
+            this._entry = new Gtk.Entry({
+                width_chars: 16,
+                sensitive: false
+            });
+            this.append(this._entry);
+            this._saveId = 0;
+
+            Promise.resolve(ready).catch(logError).then(lookupApiKey).then((apikey) => {
+                this._entry.text = apikey ?? '';
+            }).catch(logError).finally(() => {
+                this._entry.sensitive = true;
+                this._entry.connect("changed", () => this._scheduleSave());
+            });
+
+            this.connect("destroy", () => {
+                if (this._saveId) {
+                    GLib.source_remove(this._saveId);
+                    this._save();
+                }
+            });
+        }
+
+        // Debounce so the keyring isn't written on every keystroke.
+        _scheduleSave() {
+            if (this._saveId)
+                GLib.source_remove(this._saveId);
+            this._saveId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                this._save();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+
+        _save() {
+            this._saveId = 0;
+            storeApiKey(this._entry.text).catch(logError);
         }
     }
 );
