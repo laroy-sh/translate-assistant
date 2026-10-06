@@ -56,9 +56,6 @@ export const AboutPage = GObject.registerClass(
 
             this.addFrame(null, this._getInfoFrame());
             this.addFrame(null, this._getInfoNotebook());
-            this.addLinkButton("bmc-button", 150,
-                               "https://www.buymeacoffee.com/atareao",
-                               _("Buy me a coffee"));
         }
 
         _getInfoFrame(){
@@ -98,7 +95,8 @@ export const AboutPage = GObject.registerClass(
         _getDevelopersPage(){
             const title = _("Developers");
             const content = `
-<b>Lorenzo Carbonell</b> a.k.a <a href="https://atareao.es">@atareao</a>"
+<b>Lorenzo Carbonell</b> a.k.a <a href="https://atareao.es">@atareao</a> (original author)
+<b>Laroy</b> <a href="https://github.com/laroy-sh">@laroy-sh</a> (GNOME 45/46 port)
 `;
             return this._getNotebookPage(title, content);
         }
