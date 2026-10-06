@@ -30,7 +30,17 @@ import * as Config from 'resource:///org/gnome/Shell/Extensions/js/misc/config.j
 
 import * as Widgets from './preferenceswidget.js';
 
-const Extension = ExtensionPreferences.lookupByURL(import.meta.url);
+// The extension object is registered only after prefs.js is imported,
+// so look it up lazily; GType names need the uuid at module load.
+const Extension = {
+    uuid: 'translate-assistant@atareao.es',
+    get metadata() {
+        return ExtensionPreferences.lookupByURL(import.meta.url).metadata;
+    },
+    get path() {
+        return ExtensionPreferences.lookupByURL(import.meta.url).path;
+    },
+};
 
 export const AboutPage = GObject.registerClass(
     {
