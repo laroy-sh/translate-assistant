@@ -471,6 +471,8 @@ const TranslateAssistant = GObject.registerClass(
             });
             scroll.set_child(box);
             this.menuInputExpander = new PopupMenu.PopupSubMenuMenuItem(this._source_lang);
+            this.menuInputExpander.menu.box.add_child(
+                this._languagePicker('source-lang'));
             this.menuInputExpander.menu.box.add_child(scroll);
             this.menuInputExpander.menu.box.add_child(this._menuIconsIn())
             return this.menuInputExpander;
@@ -497,9 +499,58 @@ const TranslateAssistant = GObject.registerClass(
             });
             scroll.set_child(box);
             this.menuOutputExpander = new PopupMenu.PopupSubMenuMenuItem(this._target_lang);
+            this.menuOutputExpander.menu.box.add_child(
+                this._languagePicker('target-lang'));
             this.menuOutputExpander.menu.box.add_child(scroll);
             this.menuOutputExpander.menu.box.add_child(this._menuIconsOut())
             return this.menuOutputExpander;
+        }
+
+        /* A button showing the current language that expands into a
+         * scrollable list of all languages the setting allows. */
+        _languagePicker(keyName){
+            const box = new St.BoxLayout({
+                vertical: true,
+                x_expand: true
+            });
+            const toggle = new St.Button({
+                label: this._getValue(keyName),
+                x_expand: true,
+                style_class: "translate-assistant-button"
+            });
+            const list = new St.BoxLayout({
+                vertical: true
+            });
+            const scroll = new St.ScrollView({
+                height: 200,
+                visible: false
+            });
+            scroll.set_child(list);
+            const nicks = this._settings.settings_schema.get_key(keyName)
+                .get_range().recursiveUnpack()[1];
+            for (const nick of nicks) {
+                const item = new St.Button({
+                    child: new St.Label({
+                        text: nick,
+                        x_align: Clutter.ActorAlign.START
+                    }),
+                    x_expand: true,
+                    style_class: "translate-assistant-language"
+                });
+                item.connect('clicked', () => {
+                    scroll.hide();
+                    this._settings.set_string(keyName, nick);
+                });
+                list.add_child(item);
+            }
+            toggle.connect('clicked', () => {
+                scroll.visible = !scroll.visible;
+            });
+            this._languageButtons ??= {};
+            this._languageButtons[keyName] = toggle;
+            box.add_child(toggle);
+            box.add_child(scroll);
+            return box;
         }
 
         _getValue(keyName){
@@ -530,6 +581,8 @@ const TranslateAssistant = GObject.registerClass(
 
         _settingsChanged(){
             this._loadPreferences();
+            for (const [keyName, button] of Object.entries(this._languageButtons))
+                button.label = this._getValue(keyName);
             this.menuInputExpander.label.text = this._source_lang;
             this.menuOutputExpander.label.text = this._target_lang;
         }
