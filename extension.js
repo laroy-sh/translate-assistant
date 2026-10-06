@@ -47,6 +47,16 @@ const SHORTCUT_SETTING_KEY = "keybinding-translate-clipboard";
 // Source language code meaning "let DeepL detect it".
 const AUTO_LANG = "AUTO";
 
+/* GNOME 45's ScrollView is an St.Bin whose set_child() skips wiring up
+ * the scroll adjustments; only add_actor() does that there. GNOME 46
+ * has its own set_child() and no add_actor(). */
+function setScrollChild(scroll, child){
+    if(scroll instanceof St.Bin)
+        scroll.add_actor(child);
+    else
+        scroll.set_child(child);
+}
+
 
 const TranslateAssistant = GObject.registerClass(
     class TranslateAssistant extends PanelMenu.Button{
@@ -197,7 +207,10 @@ const TranslateAssistant = GObject.registerClass(
             if(!fromText || fromText === "")
                 return;
             // Never send the API key over plain HTTP or to a non-URL.
-            if(!this._url.toLowerCase().startsWith('https://')){
+            // Keep the checked URL: prefs may change this._url while the
+            // keyring lookup is pending.
+            const url = this._url;
+            if(!url.toLowerCase().startsWith('https://')){
                 Main.notify("Translate Assistant", _("DeepL URL must start with https://"));
                 return;
             }
@@ -208,13 +221,13 @@ const TranslateAssistant = GObject.registerClass(
                     Main.notify("Translate Assistant", _("Set API Key of DeepL"));
                     return;
                 }
-                this._sendTranslation(apikey, fromOrTo, fromText, callback);
+                this._sendTranslation(apikey, url, fromOrTo, fromText, callback);
             }).catch((e) => {
                 Main.notify("Translate Assistant", `Error: ${e.message}`);
             });
         }
 
-        _sendTranslation(apikey, fromOrTo, fromText, callback){
+        _sendTranslation(apikey, url, fromOrTo, fromText, callback){
             if(apikey){
                 let split_sentences = this._split_sentences?"1":"0";
                 let preserve_formatting = this._preserve_formatting?"1":"0";
@@ -242,7 +255,7 @@ const TranslateAssistant = GObject.registerClass(
                 }
                 let message = Soup.Message.new_from_encoded_form(
                     'POST',
-                    this._url,
+                    url,
                     Soup.form_encode_hash(params)
                 );
                 message.get_request_headers().append(
@@ -497,7 +510,7 @@ const TranslateAssistant = GObject.registerClass(
                 width: 300,
                 height: 300
             });
-            scroll.set_child(box);
+            setScrollChild(scroll, box);
             this.menuInputExpander = new PopupMenu.PopupSubMenuMenuItem(this._source_lang);
             this.menuInputExpander.menu.box.add_child(
                 this._languagePicker('source-lang'));
@@ -525,7 +538,7 @@ const TranslateAssistant = GObject.registerClass(
                 width: 300,
                 height: 300
             });
-            scroll.set_child(box);
+            setScrollChild(scroll, box);
             this.menuOutputExpander = new PopupMenu.PopupSubMenuMenuItem(this._target_lang);
             this.menuOutputExpander.menu.box.add_child(
                 this._languagePicker('target-lang'));
@@ -553,7 +566,7 @@ const TranslateAssistant = GObject.registerClass(
                 height: 200,
                 visible: false
             });
-            scroll.set_child(list);
+            setScrollChild(scroll, list);
             const nicks = this._settings.settings_schema.get_key(keyName)
                 .get_range().recursiveUnpack()[1];
             for (const nick of nicks) {
