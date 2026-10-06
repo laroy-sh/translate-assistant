@@ -22,6 +22,7 @@
  * IN THE SOFTWARE.
  */
 
+import Adw from 'gi://Adw';
 import GObject from 'gi://GObject';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
@@ -87,16 +88,21 @@ const TranslateAssistantPreferencesWidget = GObject.registerClass(
 );
 
 export default class TranslateAssistantPreferences extends ExtensionPreferences {
-    getPreferencesWidget() {
+    // getPreferencesWidget() would be wrapped in a width-clamped
+    // Adw.PreferencesPage, cutting off this two-pane layout, so the
+    // widget replaces the window content instead.
+    fillPreferencesWindow(window) {
         const settings = this.getSettings();
         const migrated = migrateApiKey(settings);
-        const preferencesWidget = new TranslateAssistantPreferencesWidget(settings, migrated);
-        preferencesWidget.connect("realize", ()=>{
-            const window = preferencesWidget.get_root();
-            window.set_title(_("Translate Assistant Configuration"));
-            window.default_height = 800;
-            window.default_width = 850;
+        const toolbarView = new Adw.ToolbarView({
+            content: new TranslateAssistantPreferencesWidget(settings, migrated),
         });
-        return preferencesWidget;
+        toolbarView.add_top_bar(new Adw.HeaderBar());
+        // The prefs loader rejects windows without a visible_page,
+        // so register an empty page before swapping the content.
+        window.add(new Adw.PreferencesPage());
+        window.set_content(toolbarView);
+        window.set_title(_("Translate Assistant Configuration"));
+        window.set_default_size(850, 800);
     }
 }
