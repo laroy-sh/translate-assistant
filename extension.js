@@ -194,6 +194,11 @@ const TranslateAssistant = GObject.registerClass(
         _translateText(fromOrTo, fromText, callback){
             if(!fromText || fromText === "")
                 return;
+            // Never send the API key over plain HTTP or to a non-URL.
+            if(!this._url.toLowerCase().startsWith('https://')){
+                Main.notify("Translate Assistant", _("DeepL URL must start with https://"));
+                return;
+            }
             lookupApiKey().then((apikey) => {
                 if(this._destroyed)
                     return;
