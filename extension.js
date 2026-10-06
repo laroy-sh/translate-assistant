@@ -46,6 +46,8 @@ const SHELL_KEYBINDINGS_SCHEMA = "org.gnome.shell.keybindings";
 const SHORTCUT_SETTING_KEY = "keybinding-translate-clipboard";
 // Source language code meaning "let DeepL detect it".
 const AUTO_LANG = "AUTO";
+// Pause in typing before the input box is translated live.
+const LIVE_TRANSLATE_DELAY_MS = 700;
 
 /* GNOME 45's ScrollView is an St.Bin whose set_child() skips wiring up
  * the scroll adjustments; only add_actor() does that there. GNOME 46
@@ -67,6 +69,7 @@ const TranslateAssistant = GObject.registerClass(
 
             this._settingsChangedId = null;
             this._clipboardTimeoutId = null;
+            this._liveTranslateId = null;
             this._selectionOwnerChangedId = null;
 
             this._settings = extension.getSettings();
@@ -91,8 +94,17 @@ const TranslateAssistant = GObject.registerClass(
             /* Separator */
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
             this.menu.addMenuItem(this._menuInput());
+            this.menu.addMenuItem(this._textItem(this.inputEntry));
+            this.menu.addMenuItem(this._menuIconsIn());
             this.menu.addMenuItem(this._menuIcons());
             this.menu.addMenuItem(this._menuOutput());
+            this.menu.addMenuItem(this._textItem(this.outputEntry));
+            this.menu.addMenuItem(this._menuIconsOut());
+            /* Ready to paste or type as soon as the menu opens */
+            this.menu.connect('open-state-changed', (_menu, open) => {
+                if(open)
+                    this.inputEntry.grab_key_focus();
+            });
 
             /* Separator */
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -128,7 +140,7 @@ const TranslateAssistant = GObject.registerClass(
             if(this.autoPasteSwitch.state === true){ 
                 St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, fromText) => {
                     if(fromText && fromText !== ""){
-                        this.inputEntry.get_clutter_text().set_text(fromText);
+                        this._setInputText(fromText);
                         if(this.autoTranslateSwitch.state === true){
                             this._translateText(true, fromText, (toText) => {
                                 this.outputEntry.get_clutter_text().set_text(toText);
@@ -187,7 +199,7 @@ const TranslateAssistant = GObject.registerClass(
                 Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
                 () => {
                     St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, fromText) => {
-                        this.inputEntry.get_clutter_text().set_text(fromText);
+                        this._setInputText(fromText);
                         this._translateText(true, fromText, (toText) => {
                             this.outputEntry.get_clutter_text().set_text(toText);
                             if(this.autoCopySwitch.state === true){
@@ -394,7 +406,8 @@ const TranslateAssistant = GObject.registerClass(
             buttonPasteFromClipboardIn.connect('clicked', ()=>{
                 St.Clipboard.get_default().get_text(CLIPBOARD_TYPE,(_, inText) => {
                     if(inText && inText !== ""){
-                        this.inputEntry.get_clutter_text().set_text(inText);
+                        this._setInputText(inText);
+                        this._translateInput();
                     }
                 });
             });
@@ -448,13 +461,8 @@ const TranslateAssistant = GObject.registerClass(
                 styleClass: "translate-assistant-button"
             });
             buttonTranslateFrom.connect('clicked', ()=>{
-                let fromText = this.inputEntry.get_clutter_text().get_text();
-                this._translateText(true, fromText, (toText) => {
-                    this.outputEntry.get_clutter_text().set_text(toText);
-                    if(this.autoCopySwitch.state === true){
-                        this._copyToClipboard(toText);
-                    }
-                });
+                this._cancelLiveTranslate();
+                this._translateInput();
             });
             box.add_child(buttonTranslateFrom);
             let buttonTranslate = new St.Button({
@@ -469,7 +477,7 @@ const TranslateAssistant = GObject.registerClass(
             buttonTranslate.connect('clicked', ()=>{
                 let fromText = this.outputEntry.get_clutter_text().get_text();
                 this._translateText(false, fromText, (toText) => {
-                    this.inputEntry.get_clutter_text().set_text(toText);
+                    this._setInputText(toText);
                     if(this.autoCopySwitch.state === true){
                         this._copyToClipboard(toText);
                     }
@@ -492,59 +500,105 @@ const TranslateAssistant = GObject.registerClass(
         }
 
         _menuInput(){
-            this.inputEntry = new St.Entry({
-                name: 'inputEntry',
-                style_class: 'entry',
-                can_focus: true,
-                track_hover: true
+            this.inputEntry = this._textEntry('inputEntry');
+            const inputText = this.inputEntry.get_clutter_text();
+            inputText.connect('text-changed', () => {
+                if(!this._settingInput)
+                    this._scheduleLiveTranslate();
             });
-            this.inputEntry.get_clutter_text().set_line_wrap(true);
-            this.inputEntry.get_clutter_text().set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
-            this.inputEntry.get_clutter_text().set_single_line_mode(false);
-            this.inputEntry.get_clutter_text().set_activatable(true);
-            let box = new St.BoxLayout({
-                vertical: true,
+            inputText.connect('activate', () => {
+                this._cancelLiveTranslate();
+                this._translateInput();
             });
-            box.add_child(this.inputEntry);
-            let scroll = new St.ScrollView({
-                width: 300,
-                height: 300
-            });
-            setScrollChild(scroll, box);
             this.menuInputExpander = new PopupMenu.PopupSubMenuMenuItem(this._source_lang);
             this.menuInputExpander.menu.box.add_child(
                 this._languagePicker('source-lang'));
-            this.menuInputExpander.menu.box.add_child(scroll);
-            this.menuInputExpander.menu.box.add_child(this._menuIconsIn())
             return this.menuInputExpander;
         }
 
         _menuOutput(){
-            this.outputEntry = new St.Entry({
-                name: 'outputEntry',
-                style_class: 'entry',
-                can_focus: true,
-                track_hover: true
-            });
-            this.outputEntry.get_clutter_text().set_line_wrap(true);
-            this.outputEntry.get_clutter_text().set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
-            this.outputEntry.get_clutter_text().set_single_line_mode(false);
-            this.outputEntry.get_clutter_text().set_activatable(true);
-            let box = new St.BoxLayout({
-                vertical: true,
-            });
-            box.add_child(this.outputEntry);
-            let scroll = new St.ScrollView({
-                width: 300,
-                height: 300
-            });
-            setScrollChild(scroll, box);
+            this.outputEntry = this._textEntry('outputEntry');
             this.menuOutputExpander = new PopupMenu.PopupSubMenuMenuItem(this._target_lang);
             this.menuOutputExpander.menu.box.add_child(
                 this._languagePicker('target-lang'));
-            this.menuOutputExpander.menu.box.add_child(scroll);
-            this.menuOutputExpander.menu.box.add_child(this._menuIconsOut())
             return this.menuOutputExpander;
+        }
+
+        _textEntry(name){
+            const entry = new St.Entry({
+                name: name,
+                style_class: 'entry translate-assistant-text',
+                can_focus: true,
+                track_hover: true,
+                x_expand: true
+            });
+            const text = entry.get_clutter_text();
+            text.set_line_wrap(true);
+            text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+            text.set_single_line_mode(false);
+            text.set_activatable(true);
+            return entry;
+        }
+
+        /* Always-visible text box. Not reactive, so clicking into it
+         * doesn't activate the item and close the menu. */
+        _textItem(entry){
+            const box = new St.BoxLayout({
+                vertical: true,
+            });
+            box.add_child(entry);
+            const scroll = new St.ScrollView({
+                width: 300,
+                height: 120
+            });
+            setScrollChild(scroll, box);
+            const item = new PopupMenu.PopupBaseMenuItem({
+                reactive: false,
+                can_focus: false
+            });
+            item.add_child(scroll);
+            return item;
+        }
+
+        /* Set the input box without kicking off a live translation. */
+        _setInputText(text){
+            this._settingInput = true;
+            this.inputEntry.get_clutter_text().set_text(text);
+            this._settingInput = false;
+        }
+
+        _translateInput(){
+            const fromText = this.inputEntry.get_clutter_text().get_text();
+            if(!fromText){
+                this.outputEntry.get_clutter_text().set_text("");
+                return;
+            }
+            this._translateText(true, fromText, (toText) => {
+                this.outputEntry.get_clutter_text().set_text(toText);
+                if(this.autoCopySwitch.state === true){
+                    this._copyToClipboard(toText);
+                }
+            });
+        }
+
+        /* Translate as you type, once typing pauses (Auto Translate on). */
+        _scheduleLiveTranslate(){
+            this._cancelLiveTranslate();
+            if(this.autoTranslateSwitch.state !== true)
+                return;
+            this._liveTranslateId = GLib.timeout_add(
+                GLib.PRIORITY_DEFAULT, LIVE_TRANSLATE_DELAY_MS, () => {
+                    this._liveTranslateId = null;
+                    this._translateInput();
+                    return GLib.SOURCE_REMOVE;
+                });
+        }
+
+        _cancelLiveTranslate(){
+            if(this._liveTranslateId){
+                GLib.source_remove(this._liveTranslateId);
+                this._liveTranslateId = null;
+            }
         }
 
         /* A button showing the current language that expands into a
@@ -630,6 +684,7 @@ const TranslateAssistant = GObject.registerClass(
 
         destroy(){
             this._destroyed = true;
+            this._cancelLiveTranslate();
             this._disconnectSettings();
             this._unbindShortcut();
             this._disconnectSelectionListener();
