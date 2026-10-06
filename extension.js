@@ -380,7 +380,7 @@ const TranslateAssistant = GObject.registerClass(
                 canFocus: false
             });
             let buttonRevert = new St.Button({
-                label:_("🗘"),
+                label: "⇅",
                 x_expand: true,
                 xAlign: Clutter.ActorAlign.CENTER,
                 reactive: true,
